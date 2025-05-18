@@ -55,5 +55,5 @@ def summarize_pdf(file_path):
 
 if __name__ == "__main__":
     # Replace 'example.pdf' with the path to your PDF file
-    pdf_path = "/.pdf"
+    pdf_path = "GovardhanaSubhash_Meda.pdf"
     summarize_pdf(pdf_path)
