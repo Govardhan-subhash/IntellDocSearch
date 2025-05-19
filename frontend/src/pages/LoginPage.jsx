@@ -1,18 +1,40 @@
 import React, { useState } from 'react';
 import 'bootstrap/dist/css/bootstrap.min.css';
-import { Link } from 'react-router-dom';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-const navigate =useNavigate();
-  const handleLogin = () => {
-    navigate('/upload');
+  const [error, setError] = useState('');
+  const navigate = useNavigate();
+
+  const handleLogin = async () => {
+    try {
+      // Make API call to the backend login endpoint
+      const response = await axios.post('http://localhost:8081/auth/login', {
+        username: email, // Backend expects "username"
+        password: password,
+      });
+
+      // Extract the JWT token from the response
+      const token = response.data;
+
+      // Store the token in localStorage
+      localStorage.setItem('jwtToken', token);
+
+      // Navigate to the upload page
+      navigate('/upload');
+    } catch (err) {
+      // Handle errors (e.g., invalid credentials)
+      setError('Invalid email or password');
+    }
   };
-const registerHandle = () => {
-  navigate('/register');
-};
+
+  const registerHandle = () => {
+    navigate('/register');
+  };
+
   return (
     <div className="container login-container">
       <div className="form-container shadow-lg">
@@ -36,12 +58,14 @@ const registerHandle = () => {
             placeholder="Enter your password"
             required
           />
-          <div className='d-block'>
-          <button className="btn btn-primary w-25" onClick={handleLogin}>
-            Login
-          </button>
-          <button className="btn btn-secondary w-25 " onClick={registerHandle}>
-          Register</button>
+          {error && <p style={{ color: 'red' }}>{error}</p>}
+          <div className="d-block">
+            <button className="btn btn-primary w-25" onClick={handleLogin}>
+              Login
+            </button>
+            <button className="btn btn-secondary w-25" onClick={registerHandle}>
+              Register
+            </button>
           </div>
         </form>
       </div>

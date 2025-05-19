@@ -1,20 +1,46 @@
 import React, { useState } from 'react';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 
 const RegisterPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const navigate=useNavigate();
+  const [role, setRole] = useState('USER'); // Default role
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const navigate = useNavigate();
 
-  const handleRegister = () => {
+  const handleRegister = async () => {
     if (password !== confirmPassword) {
-      alert('Passwords do not match!');
+      setError('Passwords do not match!');
       return;
     }
-    navigate('/');
-    console.log('Register:', { email, password });
+
+    try {
+      console.log('Request Payload:', {
+        username: email,
+        password: password,
+        role: role,
+      });
+
+      const response = await axios.post('http://localhost:8081/auth/register', {
+        username: email,
+        password: password,
+        role: role,
+      });
+
+      console.log('Response:', response.data);
+
+      setSuccess('Registration successful! Redirecting to login...');
+      setError('');
+      setTimeout(() => navigate('/'), 2000); // Redirect to login page after 2 seconds
+    } catch (err) {
+      console.error('Error:', err.response || err.message);
+      setError(err.response?.data || 'Registration failed!');
+      setSuccess('');
+    }
   };
 
   return (
@@ -25,7 +51,7 @@ const RegisterPage = () => {
           <div className="mb-3">
             <label>Email</label>
             <input
-              type="email"
+              type="text"
               className="form-control"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -55,6 +81,20 @@ const RegisterPage = () => {
               required
             />
           </div>
+          <div className="mb-3">
+            <label>Role</label>
+            <select
+              className="form-control"
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              required
+            >
+              <option value="USER">User</option>
+              <option value="ADMIN">Admin</option>
+            </select>
+          </div>
+          {error && <p style={{ color: 'red' }}>{error}</p>}
+          {success && <p style={{ color: 'green' }}>{success}</p>}
           <button className="btn btn-primary w-100" onClick={handleRegister}>
             Register
           </button>
