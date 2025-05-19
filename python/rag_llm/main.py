@@ -1,167 +1,191 @@
 # RAG pipeline using LangChain, LLM, and MongoDB Atlas (Vector Search)
 
 # Install required libraries:
-# pip install langchain langchain-community openai pymongo[tls] pymupdf tiktoken sentence-transformers
+# pip install langchain langchain-community openai pymongo[tls] pymupdf tiktoken sentence-transformers python-docx python-pptx
 
-from transformers import AutoTokenizer, AutoModel
-import torch
 import os
-import fitz  # PyMuPDF
-from langchain.document_loaders import PyMuPDFLoader
+from docx import Document as DocxDocument  # Alias to avoid conflicts
+from pptx import Presentation  # For PowerPoint presentations
+from langchain_community.document_loaders import PyMuPDFLoader
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from pymongo import MongoClient
 from dotenv import load_dotenv
-import requests  # For making API calls
+from pinecone import Pinecone, ServerlessSpec
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain.schema import Document
 
 # Load environment variables from .env
 load_dotenv()
 
-# MongoDB Atlas Config
-mongo_uri = os.getenv("MONGODB_URI")  # MongoDB connection string
-mongo_db_name = os.getenv("MONGODB_DB")  # Database name
-mongo_collection_name = os.getenv("MONGODB_COLLECTION")  # Collection name
+# Pinecone Configuration
+pinecone_api_key = os.getenv("PINECONE_API_KEY")
+pinecone_environment = os.getenv("PINECONE_ENVIRONMENT")
+pinecone_index_name = os.getenv("PINECONE_INDEX_NAME")
 
-# Hugging Face API Config
-huggingface_api_key = os.getenv("HUGGINGFACE_API_TOKEN")  # Your Hugging Face API key
-huggingface_model = "sentence-transformers/multi-qa-mpnet-base-dot-v1"  # Model to use for embeddings
-huggingface_api_endpoint = f"https://api-inference.huggingface.co/models/{huggingface_model}"
+# Initialize Pinecone
+pinecone_client = Pinecone(api_key=pinecone_api_key)
 
-# Gemini API Config
-gemini_api_endpoint = os.getenv("GEMINI_API_ENDPOINT")  # API for question-answering
-gemini_api_key = os.getenv("GEMINI_API_KEY")  # API key for Gemini API
+if pinecone_index_name not in pinecone_client.list_indexes().names():
+    pinecone_client.create_index(
+        name=pinecone_index_name,
+        dimension=384,  # Adjust this based on your embedding model
+        metric='cosine',
+        spec=ServerlessSpec(
+            cloud='aws',
+            region=pinecone_environment
+        )
+    )
 
-# Load PDFs from a folder using LangChain's PyMuPDFLoader
-def load_pdfs_from_folder(folder_path):
+index = pinecone_client.Index(pinecone_index_name)
+
+# Initialize ChatGoogleGenerativeAI
+chat_model = ChatGoogleGenerativeAI(
+    model="gemini-2.0-flash",
+    temperature=0,
+    max_tokens=None,
+    timeout=None,
+    max_retries=2,
+    api_key=os.getenv("GEMINI_API_KEY")
+)
+
+# Initialize HuggingFaceEmbeddings
+hf_embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+
+# Load files from a folder (PDFs, Word, PowerPoint, and text files)
+def load_files_from_folder(folder_path):
     all_docs = []
     for filename in os.listdir(folder_path):
+        file_path = os.path.join(folder_path, filename)
+        print(f"Processing file: {filename}")  # Print the document name
         if filename.endswith(".pdf"):
-            loader = PyMuPDFLoader(os.path.join(folder_path, filename))
+            loader = PyMuPDFLoader(file_path)
             documents = loader.load()
+            all_docs.extend([Document(page_content=doc.page_content, metadata={"source": file_path}) for doc in documents])
+        elif filename.endswith(".docx"):
+            documents = load_word_document(file_path)
+            all_docs.extend(documents)
+        elif filename.endswith(".pptx"):
+            documents = load_powerpoint_presentation(file_path)
+            all_docs.extend(documents)
+        elif filename.endswith(".txt"):
+            documents = load_text_file(file_path)
             all_docs.extend(documents)
     return all_docs
+
+# Load Word documents
+def load_word_document(file_path):
+    doc = DocxDocument(file_path)
+    content = "\n".join([paragraph.text for paragraph in doc.paragraphs if paragraph.text.strip()])
+    return [Document(page_content=content, metadata={"source": file_path})]
+
+# Load PowerPoint presentations
+def load_powerpoint_presentation(file_path):
+    presentation = Presentation(file_path)
+    slides_content = []
+    for slide in presentation.slides:
+        slide_text = []
+        for shape in slide.shapes:
+            if shape.has_text_frame:
+                slide_text.append(shape.text)
+        slides_content.append("\n".join(slide_text))
+    content = "\n".join(slides_content)
+    return [Document(page_content=content, metadata={"source": file_path})]
+
+# Load text files
+def load_text_file(file_path):
+    with open(file_path, "r", encoding="utf-8") as file:
+        content = file.read()
+    return [Document(page_content=content, metadata={"source": file_path})]
 
 # Split documents into chunks using LangChain's RecursiveCharacterTextSplitter
 def process_documents(docs, chunk_size=1000, chunk_overlap=200):
     splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-    chunks = splitter.split_documents(docs)
-    return chunks
+    return splitter.split_documents(docs)
 
-# Generate embeddings using Hugging Face Inference API
+# Generate embeddings using HuggingFaceEmbeddings
 def generate_embedding(text):
-    headers = {
-        "Authorization": f"Bearer {huggingface_api_key}",
-        "Content-Type": "application/json"
-    }
-    payload = {"inputs": text}  # Use "inputs" directly as a string
-    response = requests.post(huggingface_api_endpoint, headers=headers, json=payload)
-
-    if response.status_code == 200:
-        # The API returns a dictionary with the embedding
-        return response.json()["embedding"]
-    else:
-        print(f"Error generating embedding: {response.status_code}, {response.text}")
+    try:
+        return hf_embedding_model.embed_query(text)
+    except Exception:
         return None
 
-# Store document chunks and embeddings in MongoDB Atlas
-def store_chunks_in_mongodb(chunks):
-    client = MongoClient(mongo_uri)
-    db = client[mongo_db_name]
-    collection = db[mongo_collection_name]
-
-    # Clear existing collection
-    collection.delete_many({})
-
-    # Insert chunks with embeddings into MongoDB
-    for chunk in chunks:
+# Store document chunks and embeddings in Pinecone
+def store_chunks_in_pinecone(chunks):
+    for i, chunk in enumerate(chunks):
         embedding = generate_embedding(chunk.page_content)
-        if embedding:
-            collection.insert_one({
-                "content": chunk.page_content,
-                "metadata": chunk.metadata,
-                "embedding": embedding
-            })
-    print(f"Stored {len(chunks)} chunks in MongoDB Atlas.")
+        if not embedding:
+            continue
 
-# Retrieve relevant documents from MongoDB Atlas using Vector Search
-def retrieve_documents_from_mongodb(query):
-    client = MongoClient(mongo_uri)
-    db = client[mongo_db_name]
-    collection = db[mongo_collection_name]
+        metadata = chunk.metadata if isinstance(chunk.metadata, dict) else {}
+        sanitized_metadata = {}
+        for key, value in metadata.items():
+            if isinstance(value, (str, int, float, bool)):
+                sanitized_metadata[key] = value
+            elif isinstance(value, list) and all(isinstance(v, str) for v in value):
+                sanitized_metadata[key] = value
+            else:
+                sanitized_metadata[key] = str(value)
 
-    # Generate embedding for the query
+        sanitized_metadata["content"] = chunk.page_content
+
+        try:
+            index.upsert([(f"doc-{i}", embedding, sanitized_metadata)])
+        except Exception:
+            pass
+
+# Retrieve relevant documents from Pinecone using Vector Search
+def retrieve_documents_from_pinecone(query):
     query_embedding = generate_embedding(query)
     if not query_embedding:
-        print("Failed to generate query embedding.")
         return []
 
-    # Perform vector search in MongoDB
-    results = collection.aggregate([
-        {
-            "$search": {
-                "knnBeta": {
-                    "vector": query_embedding,
-                    "path": "embedding",
-                    "k": 5  # Retrieve top 5 relevant documents
-                }
-            }
-        }
-    ])
+    results = index.query(
+        vector=query_embedding,
+        top_k=10,
+        include_metadata=True
+    )
 
-    return [{"content": result["content"], "metadata": result["metadata"]} for result in results]
+    return [{"content": match["metadata"]["content"], "metadata": match["metadata"]} for match in results["matches"]]
 
-# Call Gemini API for question-answering
+# Call Gemini API for question-answering using ChatGoogleGenerativeAI
 def call_gemini_api(question, context):
-    headers = {
-        "Authorization": f"Bearer {gemini_api_key}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "question": question,
-        "context": context
-    }
-    response = requests.post(gemini_api_endpoint, headers=headers, json=payload)
-
-    if response.status_code == 200:
-        return response.json().get("answer", "No answer provided by the API.")
-    else:
-        print(f"Error: {response.status_code}, {response.text}")
-        return "Error in processing the request."
+    prompt = f"Question: {question}\nContext: {context}\nAnswer:" if context else f"Question: {question}\nAnswer:"
+    response = chat_model.invoke(prompt)  # Invoke the Gemini API
+    # Extract the 'content' attribute of the response
+    return response.content if hasattr(response, "content") else "No answer available."
 
 # Main execution
 def main():
-    folder_path = "."  # Your folder with multiple PDFs
-    docs = load_pdfs_from_folder(folder_path)
+    folder_path = "#pa0th"  # Folder containing multiple files
+    docs = load_files_from_folder(folder_path)  # Load all supported files
     print(f"Loaded {len(docs)} documents from folder: {folder_path}")
 
+    # Process all documents into chunks
     chunks = process_documents(docs)
-    print(f"Created {len(chunks)} chunks.")
-    print(f"First chunk: {chunks[0].page_content if chunks else 'No chunks created'}")
+    print(f"Created {len(chunks)} chunks from all documents.")
 
-    # Store chunks and embeddings in MongoDB Atlas
-    store_chunks_in_mongodb(chunks)
+    # Store all chunks and their embeddings in Pinecone
+    store_chunks_in_pinecone(chunks)
 
     while True:
         query = input("Ask a question (or type 'exit'): ")
         if query.lower() == 'exit':
             break
 
-        # Retrieve relevant documents from MongoDB Atlas
-        retrieved_docs = retrieve_documents_from_mongodb(query)
+        # Retrieve relevant chunks from Pinecone
+        retrieved_docs = retrieve_documents_from_pinecone(query)
 
         if not retrieved_docs:
             print("No relevant documents found.")
             print("\nAnswer: No relevant documents found.")
-            print("\nSources: []")
             continue
 
-        # Construct context from retrieved documents
+        # Construct context from retrieved chunks
         context = " ".join([doc["content"] for doc in retrieved_docs])
-        print(f"Constructed context: {context[:200]}...")
 
-        # Call Gemini API for question-answering
+        # Generate an answer using the Gemini API
         answer = call_gemini_api(question=query, context=context)
-        print("\nAnswer:", answer)
-        print("\nSources:", [doc["metadata"] for doc in retrieved_docs])
+        print("\nAnswer:", answer)  # Print only the answer content
 
 if __name__ == "__main__":
     main()
