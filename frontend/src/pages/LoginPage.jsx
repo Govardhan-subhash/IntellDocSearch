@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { jwtDecode } from 'jwt-decode';
+
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');
@@ -11,22 +13,26 @@ const LoginPage = () => {
 
   const handleLogin = async () => {
     try {
-      // Make API call to the backend login endpoint
+      // Call backend login API
       const response = await axios.post('http://localhost:8081/auth/login', {
-        username: email, // Backend expects "username"
+        username: email,
         password: password,
       });
 
-      // Extract the JWT token from the response
+      // Backend returns JWT token string
       const token = response.data;
 
-      // Store the token in localStorage
-      localStorage.setItem('jwtToken', token);
+      // Decode token to get user info
+      const decoded = jwtDecode(token);
+      const userId = decoded.sub; // user id is in 'sub' claim
 
-      // Navigate to the upload page
-      navigate('/upload');
+      // Store JWT token and userId locally
+      localStorage.setItem('token', token);
+      localStorage.setItem('userId', userId);
+
+      // Redirect user after successful login
+      navigate('/ragchat');
     } catch (err) {
-      // Handle errors (e.g., invalid credentials)
       setError('Invalid email or password');
     }
   };
@@ -42,7 +48,7 @@ const LoginPage = () => {
         <form onSubmit={(e) => e.preventDefault()}>
           <label>Email</label>
           <input
-            type="email"
+            type="text"
             className="form-control mb-3"
             value={email}
             onChange={(e) => setEmail(e.target.value)}

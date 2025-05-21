@@ -1,107 +1,114 @@
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from typing import List
+from pymongo import MongoClient
+from langchain.schema import Document
 import os
 import requests
-from langchain_community.document_loaders import PyMuPDFLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
 from dotenv import load_dotenv
-from docx import Document as DocxDocument  # Alias to avoid conflicts
-from pptx import Presentation  # For PowerPoint presentations
-from langchain.schema import Document
+from fastapi.middleware.cors import CORSMiddleware
 
 # Load environment variables from .env
 load_dotenv()
 
-# Hugging Face API URL and Token
+# Environment configs
+MONGODB_URI = os.getenv("MONGODB_URI")
+DATABASE_NAME = os.getenv("MONGODB_DB")
+COLLECTION_NAME = os.getenv("MONGODB_COLLECTION")
 HUGGINGFACE_API_URL = os.getenv("HUGGINGFACE_API_URL")
-HUGGINGFACE_API_TOKEN = os.getenv("HUGGINGFACE_API_KEY")  # Load token from .env
+HUGGINGFACE_API_TOKEN = os.getenv("HUGGINGFACE_API_KEY")
 
-# Validate the Hugging Face API token
-if not HUGGINGFACE_API_TOKEN:
-    raise ValueError("HUGGINGFACE_API_TOKEN is not set. Please check your .env file.")
+# Validate configs
+if not all([MONGODB_URI, DATABASE_NAME, COLLECTION_NAME, HUGGINGFACE_API_URL, HUGGINGFACE_API_TOKEN]):
+    raise ValueError("Missing environment variables. Check your .env file.")
 
-# Function to load and extract text from a Word document
-def load_word(file_path):
-    doc = DocxDocument(file_path)
-    content = "\n".join([paragraph.text for paragraph in doc.paragraphs if paragraph.text.strip()])
-    return [Document(page_content=content, metadata={"source": file_path})]
+# MongoDB setup
+client = MongoClient(MONGODB_URI)
+db = client[DATABASE_NAME]
+collection = db[COLLECTION_NAME]
 
-# Function to load and extract text from a PowerPoint presentation
-def load_pptx(file_path):
-    presentation = Presentation(file_path)
-    slides_content = []
-    for slide in presentation.slides:
-        slide_text = []
-        for shape in slide.shapes:
-            if shape.has_text_frame:
-                slide_text.append(shape.text)
-        slides_content.append("\n".join(slide_text))
-    content = "\n".join(slides_content)
-    return [Document(page_content=content, metadata={"source": file_path})]
+# FastAPI app setup
+app = FastAPI(
+    title="Document Summarization API",
+    description="Summarizes documents or MongoDB document chunks",
+    version="1.1"
+)
 
-# Function to load and extract text from a text file
-def load_txt(file_path):
-    with open(file_path, "r", encoding="utf-8") as file:
-        content = file.read()
-    return [Document(page_content=content, metadata={"source": file_path})]
+# CORS Middleware (allow your frontend origin here, * for testing)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Change in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# Function to load and extract text from a PDF
-def load_pdf(file_path):
-    loader = PyMuPDFLoader(file_path)
-    documents = loader.load()
-    return [Document(page_content=doc.page_content, metadata={"source": file_path}) for doc in documents]
+# Schemas
+class SummarizeByIdRequest(BaseModel):
+    document_id: str
 
-# Function to split text into manageable chunks
-def split_text(documents):
-    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-    chunks = splitter.split_documents(documents)
-    return chunks
-pip 
-# Function to summarize text chunks using Hugging Face API
-def summarize_chunks(chunks):
+class SummarizeByTextRequest(BaseModel):
+    content: str
+
+# GET documents uploaded by a user
+@app.get("/documents/user/{user_id}")
+def get_documents_by_user(user_id: str):
+    docs_cursor = collection.find({"userId": user_id})
+    documents_map = {}
+    for doc in docs_cursor:
+        doc_id = doc.get("documentId")
+        if doc_id and doc_id not in documents_map:
+            documents_map[doc_id] = {
+                "documentId": doc_id,
+                "fileName": doc.get("fileName", "unknown"),
+            }
+    return list(documents_map.values())
+
+# Get chunks for a specific document ID
+def get_chunks(document_id: str) -> List[Document]:
+    query = {"documentId": document_id}
+    records = collection.find(query)
+    documents = []
+    for record in records:
+        content = record.get("content", "")
+        metadata = {
+            "source": record.get("fileName", "unknown"),
+            "chunkIndex": record.get("chunkIndex"),
+        }
+        documents.append(Document(page_content=content, metadata=metadata))
+    return documents
+
+# HuggingFace summarization
+def summarize_text(text: str) -> str:
     headers = {"Authorization": f"Bearer {HUGGINGFACE_API_TOKEN}"}
-    summaries = []
-    for chunk in chunks:
-        payload = {"inputs": chunk.page_content}  # Access the page_content attribute
-        response = requests.post(HUGGINGFACE_API_URL, headers=headers, json=payload)
-        if response.status_code == 200:
-            summary = response.json()[0]['summary_text']
-            summaries.append(summary)
-        else:
-            print(f"Error: {response.status_code}, {response.text}")
-            summaries.append("Error in summarization.")
-    return summaries
+    payload = {"inputs": text}
 
-# Function to process all supported files in a folder
-def process_folder(folder_path):
-    all_documents = []
-    for filename in os.listdir(folder_path):
-        file_path = os.path.join(folder_path, filename)
-        print(f"Processing file: {filename}")
-        if filename.endswith(".pdf"):
-            documents = load_pdf(file_path)
-        elif filename.endswith(".docx"):
-            documents = load_word(file_path)
-        elif filename.endswith(".pptx"):
-            documents = load_pptx(file_path)
-        elif filename.endswith(".txt"):
-            documents = load_txt(file_path)
-        else:
-            print(f"Skipping unsupported file: {filename}")
-            continue
-        all_documents.extend(documents)
-    return all_documents
+    response = requests.post(HUGGINGFACE_API_URL, headers=headers, json=payload)
+    if response.status_code == 200:
+        try:
+            return response.json()[0]["summary_text"]
+        except Exception:
+            return "Summarization format error."
+    else:
+        print(f"HuggingFace Error: {response.status_code} - {response.text}")
+        return "Summarization failed."
 
-# Main function to summarize all files in a folder
-def summarize_folder(folder_path):
-    print(f"Loading files from folder: {folder_path}")
-    documents = process_folder(folder_path)
-    print("Splitting text into chunks...")
-    chunks = split_text(documents)
-    print("Generating summaries...")
-    summaries = summarize_chunks(chunks)
-    print("\nFinal Summary:")
-    print("\n".join(summaries))
+# 🔹 Summarize from MongoDB chunks
+@app.post("/summarize")
+def summarize_document_by_id(request: SummarizeByIdRequest):
+    chunks = get_chunks(request.document_id)
+    if not chunks:
+        raise HTTPException(status_code=404, detail="No chunks found for this document ID.")
+    
+    summaries = [summarize_text(chunk.page_content) for chunk in chunks]
+    final_summary = "\n".join(summaries)
+    return {"summary": final_summary}
 
-if __name__ == "__main__":
-    # Replace 'your_folder_path' with the path to your folder containing files
-    folder_path = "path/to/your/folder"
-    summarize_folder(folder_path)
+# 🔹 Summarize from raw text
+@app.post("/summarize/raw")
+def summarize_raw_text(request: SummarizeByTextRequest):
+    if not request.content.strip():
+        raise HTTPException(status_code=400, detail="No content provided for summarization.")
+
+    summary = summarize_text(request.content)
+    return {"summary": summary}

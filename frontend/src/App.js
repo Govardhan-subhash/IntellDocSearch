@@ -6,6 +6,7 @@ import FileUploadPage from './pages/Fileuploadpage';
 import ChatPage from './pages/ChatPage';
 import SummarizationPage from './pages/Summarizationpage';
 import DashboardPage from './pages/DashboardPage';
+import RAGChatPage from './pages/RagChatPage';
 
 const App = () => {
   return (
@@ -18,6 +19,8 @@ const App = () => {
         <Route path="/chat" element={<ChatPage />} />
         <Route path="/summarize" element={<SummarizationPage />} />
         <Route path="/dashboard" element={<DashboardPage/>} />
+        <Route path="/ragchat" element={<RAGChatPage />} />
+        <Route path="*" element={<h1>404 Not Found</h1>} />
       </Routes>
     </Router>
   );
