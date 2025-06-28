@@ -14,11 +14,11 @@ const LoginPage = () => {
   const handleLogin = async () => {
     try {
       // Call backend login API
-      const response = await axios.post('http://localhost:8081/auth/login', {
+      const response = await axios.post('http://localhost:8086/api/auth/login', {
         username: email,
         password: password,
       });
-
+      console.log('Login response:', response.data);
       // Backend returns JWT token string
       const token = response.data;
 
@@ -34,6 +34,7 @@ const LoginPage = () => {
       navigate('/ragchat');
     } catch (err) {
       setError('Invalid email or password');
+      console.log('Login error:', err);
     }
   };
 

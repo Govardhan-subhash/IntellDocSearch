@@ -24,24 +24,30 @@ const RegisterPage = () => {
         password: password,
         role: role,
       });
-
-      const response = await axios.post('http://localhost:8081/auth/register', {
+    
+      const response = await axios.post('http://localhost:8086/api/auth/register', {
         username: email,
         password: password,
         role: role,
       });
-
+    
       console.log('Response:', response.data);
-
-      setSuccess('Registration successful! Redirecting to login...');
-      setError('');
-      setTimeout(() => navigate('/'), 2000); // Redirect to login page after 2 seconds
+    
+      // Check if response contains error property
+      if (response.data.error) {
+        setError(response.data.error);
+        setSuccess('');
+      } else {
+        setSuccess('Registration successful! Redirecting to login...');
+        setError('');
+        setTimeout(() => navigate('/'), 2000); // Redirect after 2 seconds
+      }
     } catch (err) {
       console.error('Error:', err.response || err.message);
       setError(err.response?.data || 'Registration failed!');
       setSuccess('');
     }
-  };
+};  
 
   return (
     <div className="container register-container mt-5">

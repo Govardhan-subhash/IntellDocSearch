@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
-import ManageFiles from "../components/ManageFiles"; // import the new component
-
+import ReactMarkdown from "react-markdown";
+import ManageFiles from "../components/ManageFiles";
+import HistorySidebar from "../components/HistorySidebar";
 
 const RAGChatPage = () => {
   const [files, setFiles] = useState([]);
@@ -16,7 +17,6 @@ const RAGChatPage = () => {
   const [userId, setUserId] = useState(null);
   const chatEndRef = useRef(null);
   const [showFileModal, setShowFileModal] = useState(false);
-  
 
   useEffect(() => {
     const storedUserId = localStorage.getItem("userId");
@@ -35,18 +35,111 @@ const RAGChatPage = () => {
     setFiles(Array.from(e.target.files));
   };
 
-  const handleUpload = async () => {
-    if (!userId) {
-      alert("User ID is missing. Please log in.");
-      return;
-    }
-    
-    const token = localStorage.getItem("token");
-    if (!token) {
-      alert("JWT token is missing. Please log in.");
-      return;
-    }
+  // const handleUpload = async () => {
+  //   if (!userId) {
+  //     alert("User ID is missing. Please log in.");
+  //     return;
+  //   }
 
+  //   const token = localStorage.getItem("token");
+  //   if (!token) {
+  //     alert("JWT token is missing. Please log in.");
+  //     return;
+  //   }
+
+  //   if (files.length === 0) return;
+
+  //   setUploading(true);
+
+  //   try {
+  //     const formData = new FormData();
+  //     files.forEach((file) => formData.append("file", file));
+  //     formData.append("userId", userId);
+  //     console.log(userId);
+
+  //     const uploadRes = await fetch("http://localhost:8086/api/documents/upload", {
+  //       method: "POST",
+  //       headers: {
+  //         Authorization: `Bearer ${token}`,
+  //       },
+  //       body: formData,
+  //     });
+
+  //     if (!uploadRes.ok) throw new Error("Upload failed");
+  //     const pineconeForm = new FormData();
+  //     pineconeForm.append("user_id", userId);
+  //     const pineconeRes = await fetch("	http://localhost:8086/api/rag/load/", {
+  //       method: "POST",
+  //       body: pineconeForm,
+  //     });
+
+  //     if (!pineconeRes.ok) throw new Error("Pinecone load failed");
+
+  //     setMessages((msgs) => [
+  //       ...msgs,
+  //       {
+  //         text: `${files.length} file(s) uploaded and processed successfully!`,
+  //         sender: "bot",
+  //       },
+  //     ]);
+  //     setFiles([]);
+  //   } catch (error) {
+  //     console.error(error);
+  //     setMessages((msgs) => [
+  //       ...msgs,
+  //       { text: `Upload error: ${error.message}`, sender: "bot" },
+  //     ]);
+  //   } finally {
+  //     setUploading(false);
+  //   }
+  // };
+
+  // const handleSend = async () => {
+  //   if (!userId) {
+  //     alert("User ID is missing. Please log in.");
+  //     return;
+  //   }
+
+  //   if (!input.trim()) return;
+
+  //   const question = input.trim();
+  //   setMessages((msgs) => [...msgs, { text: question, sender: "user" }]);
+  //   setInput("");
+
+  //   try {
+  //     const formData = new FormData();
+  //     formData.append("user_id", userId);
+  //     formData.append("question", question);
+
+  //     const res = await fetch("	http://localhost:8086/api/rag/query/", {
+  //       method: "POST",
+  //       body: formData,
+  //     });
+
+  //     if (!res.ok) throw new Error("Failed to get answer");
+
+  //     const data = await res.json();
+  //     const answer = data.answer || "No answer found.";
+
+  //     setMessages((msgs) => [...msgs, { text: answer, sender: "bot" }]);
+
+  //     await fetch("http://localhost:8086/api/documents/chat/history/save", {
+  //       method: "POST",
+  //       headers: {
+  //         Authorization: `Bearer ${localStorage.getItem("token")}`,
+  //         "Content-Type": "application/json",
+  //       },
+  //       body: JSON.stringify({ question, answer }),
+  //     });
+  //   } catch (error) {
+  //     console.error(error);
+  //     setMessages((msgs) => [
+  //       ...msgs,
+  //       { text: `Error: ${error.message}`, sender: "bot" },
+  //     ]);
+  //   }
+  // };
+  const handleUpload = async () => {
     if (files.length === 0) return;
 
     setUploading(true);
@@ -54,10 +147,12 @@ const RAGChatPage = () => {
     try {
       const formData = new FormData();
       files.forEach((file) => formData.append("file", file));
-      formData.append("userId", userId);
-      console.log(userId);
+      // Remove sending userId in formData
 
-      const uploadRes = await fetch("http://localhost:8082/documents/upload", {
+      const token = localStorage.getItem("token");
+       console.log("Token:", token);
+      // Send request **without Authorization header** (API Gateway will handle token)
+      const uploadRes = await fetch("http://localhost:8086/api/documents/upload", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -66,14 +161,17 @@ const RAGChatPage = () => {
       });
 
       if (!uploadRes.ok) throw new Error("Upload failed");
+
       const pineconeForm = new FormData();
-      pineconeForm.append("user_id", userId); // MUST match FastAPI param
-      const pineconeRes = await fetch("http://127.0.0.1:8083/load/", {
+      // Remove user_id here as well
+      const pineconeRes = await fetch("http://localhost:8086/api/rag/load/", {
         method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
         body: pineconeForm,
       });
-           
-      console.log("Pinecone response:", pineconeRes);
+
       if (!pineconeRes.ok) throw new Error("Pinecone load failed");
 
       setMessages((msgs) => [
@@ -96,35 +194,42 @@ const RAGChatPage = () => {
   };
 
   const handleSend = async () => {
-    if (!userId) {
-      alert("User ID is missing. Please log in.");
-      return;
-    }
-  
     if (!input.trim()) return;
-  
+
     const question = input.trim();
-  
     setMessages((msgs) => [...msgs, { text: question, sender: "user" }]);
     setInput("");
-  
+
     try {
       const formData = new FormData();
-      formData.append("user_id", userId);
+      // Remove user_id from formData
       formData.append("question", question);
-  
-      const res = await fetch("http://localhost:8083/query/", {
+
+      const token = localStorage.getItem("token");
+
+      const res = await fetch("http://localhost:8086/api/rag/query/", {
         method: "POST",
-        body: formData, // form data sent
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
       });
-  
+
       if (!res.ok) throw new Error("Failed to get answer");
-  
+
       const data = await res.json();
-      setMessages((msgs) => [
-        ...msgs,
-        { text: data.answer || "No answer found.", sender: "bot" },
-      ]);
+      const answer = data.answer || "No answer found.";
+
+      setMessages((msgs) => [...msgs, { text: answer, sender: "bot" }]);
+
+      // For saving chat history, **remove Authorization header**, API Gateway adds user info
+      await fetch("http://localhost:8086/api/documents/chat/history/save", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ question, answer }),
+      });
     } catch (error) {
       console.error(error);
       setMessages((msgs) => [
@@ -133,11 +238,9 @@ const RAGChatPage = () => {
       ]);
     }
   };
-  
 
   return (
     <div className="container mt-5" style={{ maxWidth: 700 }}>
-      {/* Upload Panel */}
       <div className="card shadow-lg mb-4">
         <div className="card-header bg-primary text-white text-center">
           <h2>Upload Files (PDF, DOCX, PPTX, TXT)</h2>
@@ -158,9 +261,8 @@ const RAGChatPage = () => {
           >
             {uploading ? "Uploading..." : "Upload & Process Files"}
           </button>
-    {/* NEW: Button to open ManageFiles modal */}
-    <button
-            className="btn btn-outline-danger w-100"
+          <button
+            className="btn btn-outline-danger w-100 mt-2"
             onClick={() => setShowFileModal(true)}
             disabled={uploading || !userId}
             title={userId ? "Manage Uploaded Files" : "Login required to manage files"}
@@ -182,7 +284,6 @@ const RAGChatPage = () => {
         </div>
       </div>
 
-      {/* Chat Panel */}
       <div className="card shadow-lg">
         <div className="card-header bg-info text-white text-center">
           <h2>Chat with the RAG Bot</h2>
@@ -204,7 +305,11 @@ const RAGChatPage = () => {
                 marginLeft: msg.sender === "bot" ? 0 : "auto",
               }}
             >
-              {msg.text}
+              {msg.sender === "bot" ? (
+                <ReactMarkdown>{msg.text}</ReactMarkdown>
+              ) : (
+                msg.text
+              )}
             </div>
           ))}
           <div ref={chatEndRef} />
@@ -236,6 +341,7 @@ const RAGChatPage = () => {
         show={showFileModal}
         onClose={() => setShowFileModal(false)}
       />
+      <HistorySidebar userId={userId} token={localStorage.getItem('token')} />
     </div>
   );
 };

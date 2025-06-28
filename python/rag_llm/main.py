@@ -209,19 +209,16 @@ app = FastAPI(title="SmartDocs Query API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:3000"],
     allow_methods=["*"],
      allow_credentials=True,
     allow_headers=["*"],
 )
 
-@app.get("/")
-async def root():
-    return {"message": "Welcome to the SmartDocs Query API!"}
 
 # MongoDB config
 mongo_uri = os.getenv("MONGODB_URI")
-mongo_db_name = os.getenv("MONGODB_DBNAME", "app_data")
+mongo_db_name = os.getenv("MONGODB_DBNAME", "vector_db")
 mongo_collection_name = os.getenv("MONGODB_COLLECTION", "document_chunks")
 
 print(f"Mongo URI: {mongo_uri}")
@@ -313,7 +310,7 @@ def store_chunks_in_pinecone(chunks):
             print(f"Pinecone upsert error for chunk {i}: {e}")
 
 
-def retrieve_documents_from_pinecone(query: str, threshold: float = 0.55):
+def retrieve_documents_from_pinecone(query: str, user_id: str, threshold: float = 0.55):
     query_embedding = generate_embedding(query)
     if query_embedding is None:
         return []
@@ -322,6 +319,7 @@ def retrieve_documents_from_pinecone(query: str, threshold: float = 0.55):
         vector=query_embedding,
         top_k=10,
         include_metadata=True,
+        filter={"userId": user_id}  # Only return vectors belonging to this user
     )
 
     return [
@@ -329,7 +327,6 @@ def retrieve_documents_from_pinecone(query: str, threshold: float = 0.55):
         for match in results.get("matches", [])
         if match["score"] >= threshold
     ]
-
 
 def call_gemini_api(question: str, context: Optional[str]):
     prompt = f"Question: {question}\nContext: {context}\nAnswer:" if context else f"Question: {question}\nAnswer:"
@@ -352,7 +349,9 @@ async def load_user_chunks(user_id: str = Form(...)):
 async def query_api(user_id: str = Form(...), question: str = Form(...)):
     print(f"Received query for user_id: {user_id} with question: {question}")
     
-    retrieved_docs = retrieve_documents_from_pinecone(question)
+    # retrieved_docs = retrieve_documents_from_pinecone(question)
+    retrieved_docs = retrieve_documents_from_pinecone(question, user_id=user_id)
+    
 
     # Use context only if we found relevant document matches
     if retrieved_docs:

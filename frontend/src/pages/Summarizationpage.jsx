@@ -14,7 +14,7 @@ const SummarizationPage = () => {
 
     const fetchUserFiles = async () => {
       try {
-        const response = await fetch("http://localhost:8082/documents/user/files", {
+        const response = await fetch("http://localhost:8086/api/documents/user/files", {
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -46,7 +46,7 @@ const SummarizationPage = () => {
     try {
       // Fetch chunks for selected file from Spring Boot backend
       const chunksResponse = await fetch(
-        `http://localhost:8082/documents/user/files/${encodeURIComponent(selectedFile)}/chunks`,
+        `http://localhost:8086/api/documents/user/files/${encodeURIComponent(selectedFile)}/chunks`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -62,11 +62,13 @@ const SummarizationPage = () => {
       const combinedContent = chunksData.map(c => c.content).join("\n\n");
   
       // Step 2: Send combined content to Python summarization API
-      const summaryResponse = await fetch("http://localhost:8084/summarize/raw", {
+      const summaryResponse = await fetch("http://localhost:8086/api/summarize/raw", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" }, // NO Authorization header needed here
         body: JSON.stringify({ content: combinedContent }),
       });
+      
+      
   
       if (!summaryResponse.ok) throw new Error("Summarization failed.");
       const data = await summaryResponse.json();
