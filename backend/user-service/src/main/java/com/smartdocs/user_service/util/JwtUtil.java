@@ -52,6 +52,63 @@
 
 
 
+// package com.smartdocs.user_service.util;
+
+// import io.jsonwebtoken.Claims;
+// import io.jsonwebtoken.Jwts;
+// import io.jsonwebtoken.SignatureAlgorithm;
+// import io.jsonwebtoken.security.Keys;
+// import org.springframework.beans.factory.annotation.Value;
+// import org.springframework.stereotype.Component;
+
+// import javax.crypto.SecretKey;
+// import java.util.Date;
+
+// @Component
+// public class JwtUtil {
+
+//     private final SecretKey secretKey;
+
+//     public JwtUtil(@Value("${jwt.secret}") String secret) {
+//         this.secretKey = Keys.hmacShaKeyFor(secret.getBytes());
+//             System.out.println("USER-SERVICE JWT SECRET: " + secret);
+
+//     }
+
+//     public String generateToken(String userId, String username, String role) {
+//     return Jwts.builder()
+//             .setSubject(userId) // ✅ use _id from MongoDB here
+//             .claim("username", username) // Optional but useful
+//             .claim("role", role)
+//             .setIssuedAt(new Date(System.currentTimeMillis()))
+//             .setExpiration(new Date(System.currentTimeMillis() + 1000 * 60 * 60 * 10)) // 10 hours
+//             .signWith(secretKey, SignatureAlgorithm.HS256)
+//             .compact();
+// }
+
+
+//     public Claims extractClaims(String token) {
+//         return Jwts.parserBuilder()
+//                 .setSigningKey(secretKey)
+//                 .build()
+//                 .parseClaimsJws(token)
+//                 .getBody();
+//     }
+
+//     public String extractUsername(String token) {
+//         return extractClaims(token).getSubject();
+//     }
+
+//     public boolean isTokenValid(String token, String username) {
+//         return extractUsername(token).equals(username) && !isTokenExpired(token);
+//     }
+
+//     private boolean isTokenExpired(String token) {
+//         return extractClaims(token).getExpiration().before(new Date());
+//     }
+// }
+
+
 package com.smartdocs.user_service.util;
 
 import io.jsonwebtoken.Claims;
@@ -71,14 +128,16 @@ public class JwtUtil {
 
     public JwtUtil(@Value("${jwt.secret}") String secret) {
         this.secretKey = Keys.hmacShaKeyFor(secret.getBytes());
+        System.out.println("USER-SERVICE JWT SECRET: " + secret);
     }
 
-    public String generateToken(String username, String role) {
+    public String generateToken(String userId, String username, String role) {
         return Jwts.builder()
-                .setSubject(username)
+                .setSubject(userId) // ⬅️ MongoDB ObjectId as subject
+                .claim("username", username)
                 .claim("role", role)
                 .setIssuedAt(new Date(System.currentTimeMillis()))
-                .setExpiration(new Date(System.currentTimeMillis() + 1000 * 60 * 60 * 10)) // 10 hours expiry
+                .setExpiration(new Date(System.currentTimeMillis() + 1000 * 60 * 60 * 10)) // 10 hours
                 .signWith(secretKey, SignatureAlgorithm.HS256)
                 .compact();
     }
@@ -91,12 +150,12 @@ public class JwtUtil {
                 .getBody();
     }
 
-    public String extractUsername(String token) {
+    public String extractUserId(String token) {
         return extractClaims(token).getSubject();
     }
 
-    public boolean isTokenValid(String token, String username) {
-        return extractUsername(token).equals(username) && !isTokenExpired(token);
+    public boolean isTokenValid(String token, String expectedUserId) {
+        return extractUserId(token).equals(expectedUserId) && !isTokenExpired(token);
     }
 
     private boolean isTokenExpired(String token) {

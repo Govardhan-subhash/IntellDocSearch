@@ -1,6 +1,8 @@
 package com.smartdocs.document_service.dto;
 
 public class ChatHistoryRequest {
+   
+
     private String question;
     private String response;
 

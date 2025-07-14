@@ -1,16 +1,10 @@
 FROM python:3.10-slim
 
 WORKDIR /app
-
-# Copy requirements and install
-COPY requirements.txt .
+COPY . /app
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of your code
-COPY . .
-
-# Expose the port your Python app runs on
+# Expose port for summarization FastAPI service
 EXPOSE 8084
 
-# Run the Python app (adjust your command accordingly)
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8084"] 
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8084"]

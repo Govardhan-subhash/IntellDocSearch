@@ -207,13 +207,13 @@ load_dotenv()
 
 app = FastAPI(title="SmartDocs Query API")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
-    allow_methods=["*"],
-     allow_credentials=True,
-    allow_headers=["*"],
-)
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=["http://localhost:3000"],
+#     allow_methods=["*"],
+#      allow_credentials=True,
+#     allow_headers=["*"],
+# )
 
 
 # MongoDB config
@@ -364,6 +364,34 @@ async def query_api(user_id: str = Form(...), question: str = Form(...)):
 
     return JSONResponse({"answer": answer})
 
+
+# from fastapi.responses import StreamingResponse
+# import asyncio
+
+# @app.post("/query/stream")
+# async def query_api_stream(user_id: str = Form(...), question: str = Form(...)):
+#     print(f"Received query for user_id: {user_id} with question: {question}")
+
+#     retrieved_docs = retrieve_documents_from_pinecone(question, user_id=user_id)
+
+#     if retrieved_docs:
+#         context = " ".join([doc["content"] for doc in retrieved_docs])
+#         print("Using RAG context from Pinecone.")
+#     else:
+#         context = None
+#         print("No relevant documents found. Fallback to direct Gemini response.")
+
+#     # Generator to yield output gradually
+#     async def token_stream():
+#         try:
+#             for token in call_gemini_stream(question=question, context=context):
+#                 yield f"data: {token}\n\n"
+#                 await asyncio.sleep(0.05)  # Optional: mimic natural delay
+#             yield "data: [DONE]\n\n"
+#         except Exception as e:
+#             yield f"data: ERROR - {str(e)}\n\n"
+
+#     return StreamingResponse(token_stream(), media_type="text/event-stream")
 
 if __name__ == "__main__":
     import uvicorn

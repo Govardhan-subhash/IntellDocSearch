@@ -56,6 +56,7 @@ public class AuthController {
         String username = loginRequest.get("username");
         String password = loginRequest.get("password");
         String token = authService.login(username, password);
+        System.out.println(token);
         return ResponseEntity.ok(token);
     }
 }

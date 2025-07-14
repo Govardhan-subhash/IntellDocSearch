@@ -70,12 +70,14 @@ public class AuthService {
 
     public String login(String username, String password) {
         User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new RuntimeException("Invalid username or password"));
-
-        if (passwordEncoder.matches(password, user.getPassword())) {
-            return jwtUtil.generateToken(username, user.getRole());
+        .orElseThrow(() -> new RuntimeException("Invalid username or password"));
+;
+        if (user == null || !passwordEncoder.matches(password, user.getPassword())) {
+            throw new RuntimeException("Invalid username or password");
         }
 
-        throw new RuntimeException("Invalid username or password");
+        // Generate token with MongoDB _id as subject
+        return jwtUtil.generateToken(user.getId(), user.getUsername(), user.getRole());
     }
+
 }

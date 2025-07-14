@@ -34,14 +34,14 @@ app = FastAPI(
     version="1.1"
 )
 
-# CORS Middleware (allow your frontend origin here, * for testing)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Change in production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# # CORS Middleware (allow your frontend origin here, * for testing)
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=["*"],  # Change in production
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
 
 # Schemas
 class SummarizeByIdRequest(BaseModel):

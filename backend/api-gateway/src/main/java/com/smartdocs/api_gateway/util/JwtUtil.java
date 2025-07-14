@@ -16,11 +16,13 @@ import java.nio.charset.StandardCharsets;
 public class JwtUtil {
 
     private static final Logger logger = LoggerFactory.getLogger(JwtUtil.class);
-
+    
     private final SecretKey secretKey;
 
     public JwtUtil(@Value("${jwt.secret}") String secret) {
         this.secretKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+            System.out.println("API-GATEWAY JWT SECRET: " + secret);
+
     }
 
     public Claims validateTokenAndGetClaims(String token) {

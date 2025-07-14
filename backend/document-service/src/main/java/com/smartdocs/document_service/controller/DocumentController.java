@@ -290,51 +290,183 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.HttpStatus;
 
 import java.util.List;
+
+// @RestController
+// @RequestMapping("/documents")
+// public class DocumentController {
+
+//     private final DocumentService documentService;
+
+//     public DocumentController(DocumentService documentService) {
+//         this.documentService = documentService;
+//     }
+
+//     private static final Logger logger = LoggerFactory.getLogger(DocumentController.class);
+
+//     // Get chat history for authenticated user
+//     @GetMapping("/chat/history")
+//     public ResponseEntity<List<ChatHistory>> getChatHistory() {
+//         String userId = getCurrentUserId();
+//         logger.debug("Returning chat history for userId: {}", userId);
+//         List<ChatHistory> history = documentService.getChatHistoryByUserId(userId);
+//         return ResponseEntity.ok(history);
+//     }
+
+//     @PostMapping("/chat/history/save")
+//     public ResponseEntity<String> saveChatHistory(@RequestBody ChatHistoryRequest request) {
+//         String userId = getCurrentUserId();
+
+//         logger.debug("Saving chat history for userId: {}", userId);
+
+//         if (request.getQuestion() == null || request.getResponse() == null) {
+//             return ResponseEntity.badRequest().body("Question or Response is null");
+//         }
+
+//         documentService.saveChatHistory(userId, request.getQuestion(), request.getResponse());
+//         return ResponseEntity.ok("Chat history saved.");
+//     }
+
+//     // Upload a file
+//     @PostMapping("/upload")
+//     public ResponseEntity<String> uploadFile(@RequestParam("file") MultipartFile file) {
+//     System.out.println(">>> DocumentService: /upload endpoint hit! File name: " + file.getOriginalFilename());
+
+//         try {
+//             String userId = getCurrentUserId();
+//             documentService.processAndStoreFile(file, userId);
+//             return ResponseEntity.ok("File uploaded and processed successfully!");
+//         } catch (Exception e) {
+//             logger.error("Failed to upload file", e);
+//             return ResponseEntity.status(500).body("Failed to upload file: " + e.getMessage());
+//         }
+//     }
+
+//     // Get all files uploaded by user with their document IDs
+//     @GetMapping("/user/files")
+//     public ResponseEntity<List<UserFileDTO>> getUserFilesWithDocumentIds() {
+//         String userId = getCurrentUserId();
+//         List<UserFileDTO> files = documentService.getUserFilesWithDocumentIds(userId);
+//         return ResponseEntity.ok(files);
+//     }
+
+//     // Get all chunks of a specific file by filename for user
+//     @GetMapping("/user/files/{fileName}/chunks")
+//     public ResponseEntity<List<DocumentChunk>> getChunksByUserAndFile(@PathVariable String fileName) {
+//         String userId = getCurrentUserId();
+//         List<DocumentChunk> chunks = documentService.getChunksByUserAndFileName(userId, fileName);
+//         return ResponseEntity.ok(chunks);
+//     }
+
+//     // Get full concatenated content of a document by filename
+//     @GetMapping("/user/files/{fileName}/content")
+//     public ResponseEntity<String> getDocumentContent(@PathVariable String fileName) {
+//         String userId = getCurrentUserId();
+//         String fullContent = documentService.getFullDocumentContent(userId, fileName);
+//         return ResponseEntity.ok(fullContent);
+//     }
+
+//     // Delete all chunks of a file by documentId for user
+//     @DeleteMapping("/user/files")
+//     public ResponseEntity<String> deleteFileChunks(@RequestParam String documentId) {
+//         String userId = getCurrentUserId();
+//         documentService.deleteChunksByUserAndDocumentId(userId, documentId);
+//         return ResponseEntity.ok("Deleted document with documentId: " + documentId);
+//     }
+
+//     /**
+//      * Reads the current user ID from the request header "X-User-Id".
+//      * This header should be forwarded by your API Gateway after JWT validation.
+//      */
+//     private String getCurrentUserId() {
+//         ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+//         if (attributes == null) {
+//             throw new IllegalStateException("No request attributes found");
+//         }
+//         HttpServletRequest request = attributes.getRequest();
+//         String userId = request.getHeader("X-User-Id");
+//         if (userId == null || userId.isEmpty()) {
+//             throw new IllegalStateException("User ID header 'X-User-Id' is missing");
+//         }
+//         return userId;
+//     }
+// }
+
+
 
 @RestController
 @RequestMapping("/documents")
 public class DocumentController {
 
     private final DocumentService documentService;
+    private static final Logger logger = LoggerFactory.getLogger(DocumentController.class);
 
     public DocumentController(DocumentService documentService) {
         this.documentService = documentService;
     }
 
-    private static final Logger logger = LoggerFactory.getLogger(DocumentController.class);
-
-    // Get chat history for authenticated user
-    @GetMapping("/chat/history")
-    public ResponseEntity<List<ChatHistory>> getChatHistory() {
-        String userId = getCurrentUserId();
-        logger.debug("Returning chat history for userId: {}", userId);
-        List<ChatHistory> history = documentService.getChatHistoryByUserId(userId);
-        return ResponseEntity.ok(history);
+    private String extractUserId(HttpServletRequest request) {
+        String userId = request.getHeader("X-User-Id");
+        System.out.println(">>> DocumentService: extractUserId called! User ID: " + userId);
+        logger.debug("Extracted userId from request header: {}", userId);
+        if (userId == null || userId.isEmpty()) {
+            throw new IllegalStateException("User ID header 'X-User-Id' is missing");
+        }
+        return userId;
     }
 
-    @PostMapping("/chat/history/save")
-    public ResponseEntity<String> saveChatHistory(@RequestBody ChatHistoryRequest request) {
-        String userId = getCurrentUserId();
+    @GetMapping("/chat/history")
+    public ResponseEntity<List<ChatHistory>> getChatHistory(HttpServletRequest request) {
+        String userId = extractUserId(request);
+        logger.debug("Returning chat history for userId: {}", userId);
+        return ResponseEntity.ok(documentService.getChatHistoryByUserId(userId));
+    }
 
-        logger.debug("Saving chat history for userId: {}", userId);
+  @PostMapping("/chat/history/save")
+public ResponseEntity<String> saveChatHistory(
+        @RequestBody(required = false) ChatHistoryRequest requestBody,
+        HttpServletRequest request) {
+    String userId;
+    try {
+        userId = extractUserId(request);
+    } catch (IllegalStateException e) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid User ID");
+    }
 
-        if (request.getQuestion() == null || request.getResponse() == null) {
-            return ResponseEntity.badRequest().body("Question or Response is null");
+    if (requestBody == null) {
+        return ResponseEntity.badRequest().body("Request body is missing or invalid JSON");
+    }
+
+    String question = requestBody.getQuestion();
+    String response = requestBody.getResponse();
+    System.out.println(question + " " +response);
+
+    if (question == null || question.trim().isEmpty() ||
+        response == null || response.trim().isEmpty()) {
+        return ResponseEntity.badRequest().body("Question or Response cannot be null or empty");
+    }
+
+    logger.debug("Saving chat history for userId: {}", userId);
+    logger.debug("Question: {}", question);
+    logger.debug("Response: {}", response);
+
+    documentService.saveChatHistory(userId, question, response);
+    return ResponseEntity.ok("Chat history saved.");
+}
+
+
+    @PostMapping("/upload")
+    public ResponseEntity<String> uploadFile(@RequestParam("file") MultipartFile file, HttpServletRequest request) {
+        System.out.println(">>> DocumentService: /upload endpoint hit! File name: " + file.getOriginalFilename());
+
+        if (file == null || file.isEmpty()) {
+            return ResponseEntity.badRequest().body("No file uploaded");
         }
 
-        documentService.saveChatHistory(userId, request.getQuestion(), request.getResponse());
-        return ResponseEntity.ok("Chat history saved.");
-    }
-
-    // Upload a file
-    @PostMapping("/upload")
-    public ResponseEntity<String> uploadFile(@RequestParam("file") MultipartFile file) {
-    System.out.println(">>> DocumentService: /upload endpoint hit! File name: " + file.getOriginalFilename());
-
         try {
-            String userId = getCurrentUserId();
+            String userId = extractUserId(request);
             documentService.processAndStoreFile(file, userId);
             return ResponseEntity.ok("File uploaded and processed successfully!");
         } catch (Exception e) {
@@ -343,52 +475,28 @@ public class DocumentController {
         }
     }
 
-    // Get all files uploaded by user with their document IDs
     @GetMapping("/user/files")
-    public ResponseEntity<List<UserFileDTO>> getUserFilesWithDocumentIds() {
-        String userId = getCurrentUserId();
-        List<UserFileDTO> files = documentService.getUserFilesWithDocumentIds(userId);
-        return ResponseEntity.ok(files);
+    public ResponseEntity<List<UserFileDTO>> getUserFilesWithDocumentIds(HttpServletRequest request) {
+        String userId = extractUserId(request);
+        return ResponseEntity.ok(documentService.getUserFilesWithDocumentIds(userId));
     }
 
-    // Get all chunks of a specific file by filename for user
     @GetMapping("/user/files/{fileName}/chunks")
-    public ResponseEntity<List<DocumentChunk>> getChunksByUserAndFile(@PathVariable String fileName) {
-        String userId = getCurrentUserId();
-        List<DocumentChunk> chunks = documentService.getChunksByUserAndFileName(userId, fileName);
-        return ResponseEntity.ok(chunks);
+    public ResponseEntity<List<DocumentChunk>> getChunksByUserAndFile(@PathVariable String fileName, HttpServletRequest request) {
+        String userId = extractUserId(request);
+        return ResponseEntity.ok(documentService.getChunksByUserAndFileName(userId, fileName));
     }
 
-    // Get full concatenated content of a document by filename
     @GetMapping("/user/files/{fileName}/content")
-    public ResponseEntity<String> getDocumentContent(@PathVariable String fileName) {
-        String userId = getCurrentUserId();
-        String fullContent = documentService.getFullDocumentContent(userId, fileName);
-        return ResponseEntity.ok(fullContent);
+    public ResponseEntity<String> getDocumentContent(@PathVariable String fileName, HttpServletRequest request) {
+        String userId = extractUserId(request);
+        return ResponseEntity.ok(documentService.getFullDocumentContent(userId, fileName));
     }
 
-    // Delete all chunks of a file by documentId for user
     @DeleteMapping("/user/files")
-    public ResponseEntity<String> deleteFileChunks(@RequestParam String documentId) {
-        String userId = getCurrentUserId();
+    public ResponseEntity<String> deleteFileChunks(@RequestParam String documentId, HttpServletRequest request) {
+        String userId = extractUserId(request);
         documentService.deleteChunksByUserAndDocumentId(userId, documentId);
         return ResponseEntity.ok("Deleted document with documentId: " + documentId);
-    }
-
-    /**
-     * Reads the current user ID from the request header "X-User-Id".
-     * This header should be forwarded by your API Gateway after JWT validation.
-     */
-    private String getCurrentUserId() {
-        ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
-        if (attributes == null) {
-            throw new IllegalStateException("No request attributes found");
-        }
-        HttpServletRequest request = attributes.getRequest();
-        String userId = request.getHeader("X-User-Id");
-        if (userId == null || userId.isEmpty()) {
-            throw new IllegalStateException("User ID header 'X-User-Id' is missing");
-        }
-        return userId;
     }
 }
